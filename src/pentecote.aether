@@ -1,0 +1,321 @@
+;; LA PENTECOTE - Algorithme de consensus multi-apotre
+;; Auteur: Wilfred Maillot
+;; Date: 2026-05-07
+;;
+;; Actes 2:1-13 - "Le jour de la Pentecote etant arrive, ils etaient tous ensemble
+;;                 dans le meme lieu... il y eut un bruit comme celui d'un vent
+;;                 impetueux... il leur apparut des langues de feu...
+;;                 chacun les entendait parler dans sa propre langue."
+;;
+;; 12 apotres = 12 verifications independantes d'une claim VERITAS-style.
+;; Si k/12 attestent, le verdict est :
+;;   12/12  → PENTECOTEE PARFAITE
+;;   11/12  → PENTECOTEE (un Judas a trahi mais la lignee tient)
+;;   8-10   → DOUTEUSE
+;;   < 8    → BABEL  (Genese 11 - dispersion des langues)
+;;
+;; Le sceau 7 cross-linke (heritage VERITAS v2) est un GARDE prealable :
+;;   si la formule a ete swappee, on tombe directement en BABEL.
+;;
+;; Format de claim Pentecote :
+;;   (list <expr-RPN>  M T P2 P3 P5 P7 P11 P13   i0 i1 i2 i3 i4 i5 i6)
+;;          \---- 8 temoins numeriques -----/    \--- 7 features ---/
+;;          len-15 ≥ 1                            exactement 7
+;;
+;; Pour V=35 = (3+4)*5 : M=5, T=2, P2=1, P3=2, P5=0, P7=0, P11=2, P13=9
+;;   formula_hash = (5+2+1+2+0+0+2+9) mod 7 = 21 mod 7 = 0
+;;   prop parfaite (12 3 1 15 5 0 i6) ou i6 = (36+0) mod 7 = 1
+
+
+;; ===================================================================
+;; SECTION 1 : Helpers d'acces aux temoins (8) et a la proposition (7)
+;; ===================================================================
+
+(@intent "Extrait l'expression RPN de la claim (les len-15 premiers tokens).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) (list 3 4 1001 5 1003))
+(fn expr_part ((c list)) list (slice c 0 (- (len c) 15)))
+
+(@intent "Extrait la formule MTP-style (expr + 8 temoins) - len-7 premiers tokens.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9))
+(fn claim_formula ((c list)) list (slice c 0 (- (len c) 7)))
+
+(@intent "Extrait la proposition (les 7 derniers tokens).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) (list 12 3 1 15 5 0 1))
+(fn claim_proposition ((c list)) list (slice c (- (len c) 7) (len c)))
+
+(@intent "Temoin M = (somme operandes) mod 7.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 5)
+(fn witness_M ((c list)) num (get c (- (len c) 15)))
+
+(@intent "Temoin T = (nb operateurs) mod 7.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 2)
+(fn witness_T ((c list)) num (get c (- (len c) 14)))
+
+(@intent "Temoin P2 = V mod 2 (apotre Pierre).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 1)
+(fn witness_P_2 ((c list)) num (get c (- (len c) 13)))
+
+(@intent "Temoin P3 = V mod 3 (apotre Andre).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 2)
+(fn witness_P_3 ((c list)) num (get c (- (len c) 12)))
+
+(@intent "Temoin P5 = V mod 5 (apotre Jacques fils de Zebedee).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 0)
+(fn witness_P_5 ((c list)) num (get c (- (len c) 11)))
+
+(@intent "Temoin P7 = V mod 7 (apotre Jean).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 0)
+(fn witness_P_7 ((c list)) num (get c (- (len c) 10)))
+
+(@intent "Temoin P11 = V mod 11 (apotre Philippe).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 2)
+(fn witness_P_11 ((c list)) num (get c (- (len c) 9)))
+
+(@intent "Temoin P13 = V mod 13 (apotre Barthelemy).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 9)
+(fn witness_P_13 ((c list)) num (get c (- (len c) 8)))
+
+
+;; ===================================================================
+;; SECTION 2 : Evaluation RPN (heritage MTP)
+;; ===================================================================
+
+(@intent "Reducer somme operandes.")
+(fn add_if_operand ((acc num) (tok num)) num
+  (if (< tok 1001) (+ acc tok) acc))
+
+(@intent "Somme des operandes.")
+(fn sum_operands ((expr list)) num
+  (reduce:list add_if_operand expr 0))
+
+(@intent "Reducer compte operateurs.")
+(fn inc_if_operator ((acc num) (tok num)) num
+  (if (>= tok 1001) (+ acc 1) acc))
+
+(@intent "Nombre d'operateurs.")
+(fn count_operators ((expr list)) num
+  (reduce:list inc_if_operator expr 0))
+
+(@intent "Division entiere securisee.")
+(fn safe_div ((a num) (b num)) num
+  (if (= b 0) -999999 (floor (/ a b))))
+
+(@intent "Modulo securise.")
+(fn safe_mod ((a num) (b num)) num
+  (if (= b 0) -999999 (% a b)))
+
+(@intent "Operateur binaire avec propagation sentinelle.")
+(fn apply_binary ((op num) (a num) (b num)) num
+  (if (= a -999999) -999999 (if (= b -999999) -999999
+      (if (= op 1001) (+ a b) (if (= op 1002) (- a b) (if (= op 1003) (* a b)
+      (if (= op 1004) (call safe_div a b) (if (= op 1005) (call safe_mod a b)
+      (if (= op 1006) (math:pow a b) (if (= op 1009) (min a b) (if (= op 1010) (max a b) -999999)))))))))))
+
+(@intent "Operateur unaire avec propagation sentinelle.")
+(fn apply_unary ((op num) (a num)) num
+  (if (= a -999999) -999999
+    (if (= op 1101) (math:sqrt a) (if (= op 1102) (math:abs a) -999999))))
+
+(@intent "Reducer une etape stack.")
+(fn tekel_step ((stack list) (tok num)) list
+  (if (< tok 1001) (concat stack (list tok))
+    (if (>= tok 1100)
+      (if (< (len stack) 1) (list -999999)
+        (concat (slice stack 0 (- (len stack) 1))
+                (list (call apply_unary tok (get stack (- (len stack) 1))))))
+      (if (< (len stack) 2) (list -999999)
+        (concat (slice stack 0 (- (len stack) 2))
+                (list (call apply_binary tok (get stack (- (len stack) 2)) (get stack (- (len stack) 1)))))))))
+
+(@intent "Evaluation RPN complete.")
+(@example (list 3 4 1001 5 1003) 35)
+(fn tekel_weigh ((expr list)) num
+  (get (reduce:list tekel_step expr (list)) 0))
+
+(@intent "Valeur evaluee de la formule de la claim.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 35)
+(fn formula_value ((c list)) num
+  (call tekel_weigh (call expr_part c)))
+
+
+;; ===================================================================
+;; SECTION 3 : Les 12 apotres (6 numeriques + 6 structurels)
+;; ===================================================================
+
+;; --- 6 apotres numeriques (verifient V mod p = P_p_witness) ---
+
+(@intent "Apotre Pierre - V mod 2 = P2 (la roche, fondation).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 0 2 0 0 2 9 12 3 1 15 5 0 1) false)
+(fn apostle_pierre ((c list)) bool
+  (= (% (call formula_value c) 2) (call witness_P_2 c)))
+
+(@intent "Apotre Andre - V mod 3 = P3.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 0 0 0 2 9 12 3 1 15 5 0 1) false)
+(@example (list 3 4 1001 5 1003 5 2 1 5 0 0 2 9 12 3 1 15 5 0 1) false)
+(fn apostle_andre ((c list)) bool
+  (= (% (call formula_value c) 3) (call witness_P_3 c)))
+
+(@intent "Apotre Jacques fils de Zebedee - V mod 5 = P5.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 1 0 2 9 12 3 1 15 5 0 1) false)
+(fn apostle_jacques_zebedee ((c list)) bool
+  (= (% (call formula_value c) 5) (call witness_P_5 c)))
+
+(@intent "Apotre Jean - V mod 7 = P7.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 1 2 9 12 3 1 15 5 0 1) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 6 2 9 12 3 1 15 5 0 1) false)
+(fn apostle_jean ((c list)) bool
+  (= (% (call formula_value c) 7) (call witness_P_7 c)))
+
+(@intent "Apotre Philippe - V mod 11 = P11.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 1 9 12 3 1 15 5 0 1) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 5 9 12 3 1 15 5 0 1) false)
+(fn apostle_philippe ((c list)) bool
+  (= (% (call formula_value c) 11) (call witness_P_11 c)))
+
+(@intent "Apotre Barthelemy - V mod 13 = P13.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 0 12 3 1 15 5 0 1) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 12 12 3 1 15 5 0 1) false)
+(fn apostle_barthelemy ((c list)) bool
+  (= (% (call formula_value c) 13) (call witness_P_13 c)))
+
+;; --- 6 apotres structurels (verifient les 6 dimensions du raisonnement) ---
+
+(@intent "Apotre Thomas - i0 > 0 (Logos, l'intent declare).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9  0 3 1 15 5 0 0) false)
+(fn apostle_thomas ((c list)) bool
+  (> (get (call claim_proposition c) 0) 0))
+
+(@intent "Apotre Matthieu - i1 >= 2 (Dualite).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 1 1 15 5 0 6) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 0 1 15 5 0 5) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 99 1 15 5 0 4) true)
+(fn apostle_matthieu ((c list)) bool
+  (>= (get (call claim_proposition c) 1) 2))
+
+(@intent "Apotre Jacques fils d'Alphee - i2 = 1 (Trinite).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 0 15 5 0 0) false)
+(fn apostle_jacques_alphee ((c list)) bool
+  (= (get (call claim_proposition c) 2) 1))
+
+(@intent "Apotre Thaddee - i3 = 15 (Quatre Coins).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 7 5 0 0) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 16 5 0 2) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 0 5 0 0) false)
+(fn apostle_thaddee ((c list)) bool
+  (= (get (call claim_proposition c) 3) 15))
+
+(@intent "Apotre Simon le Cananeen - i4 >= 5 (La Main).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 4 0 0) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 6 0 2) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 0 0 3) false)
+(fn apostle_simon ((c list)) bool
+  (>= (get (call claim_proposition c) 4) 5))
+
+(@intent "Apotre Mathias (remplace Judas, Acts 1:26) - i5 < 6 (L'Imparfait).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 5 6) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 6 0) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 100 3) false)
+(fn apostle_mathias ((c list)) bool
+  (< (get (call claim_proposition c) 5) 6))
+
+
+;; ===================================================================
+;; SECTION 4 : Cross-link (heritage VERITAS v2 - le sceau 7 / Sabbat)
+;; ===================================================================
+
+(@intent "Hash de la formule = (M+T+P2+P3+P5+P7+P11+P13) mod 7.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 0)
+(fn formula_hash ((c list)) num
+  (% (+ (call witness_M c) (call witness_T c)
+        (call witness_P_2 c) (call witness_P_3 c) (call witness_P_5 c)
+        (call witness_P_7 c) (call witness_P_11 c) (call witness_P_13 c))
+     7))
+
+(@intent "Verifie que le sceau 7 (Sabbat cross-linke) tient : i6 = (sum i0..i5 + fhash) mod 7.")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 6) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 0) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 2) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 2 2 9 12 3 1 15 5 0 1) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 0 15 5 0 0) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 0 7 5 0 6) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 0 0 0 0 0 6 6) true)
+(fn cross_link_holds ((c list)) bool
+  (= (get (call claim_proposition c) 6)
+     (% (+ (get (call claim_proposition c) 0)
+           (get (call claim_proposition c) 1)
+           (get (call claim_proposition c) 2)
+           (get (call claim_proposition c) 3)
+           (get (call claim_proposition c) 4)
+           (get (call claim_proposition c) 5)
+           (call formula_hash c))
+        7)))
+
+
+;; ===================================================================
+;; SECTION 5 : Quorum (count_amens) et verdict
+;; ===================================================================
+
+(@intent "Compte les apotres qui attestent (0..12).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) 12)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 0 15 5 0 0) 11)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 0 7 5 0 6) 10)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 0 1 0 7 5 0 6) 8)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 0 1 0 7 4 0 5) 7)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 0 0 0 0 0 6 6) 6)
+(@invariant (>= result 0))
+(@invariant (<= result 12))
+(fn count_amens ((c list)) num
+  (+ (if (call apostle_pierre c) 1 0)
+     (if (call apostle_andre c) 1 0)
+     (if (call apostle_jacques_zebedee c) 1 0)
+     (if (call apostle_jean c) 1 0)
+     (if (call apostle_philippe c) 1 0)
+     (if (call apostle_barthelemy c) 1 0)
+     (if (call apostle_thomas c) 1 0)
+     (if (call apostle_matthieu c) 1 0)
+     (if (call apostle_jacques_alphee c) 1 0)
+     (if (call apostle_thaddee c) 1 0)
+     (if (call apostle_simon c) 1 0)
+     (if (call apostle_mathias c) 1 0)))
+
+(@intent "Verdict de consensus (PENTECOTEE PARFAITE / PENTECOTEE / DOUTEUSE / BABEL).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) "PENTECOTEE PARFAITE")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 0 15 5 0 0) "PENTECOTEE")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 0 7 5 0 6) "DOUTEUSE")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 0 1 0 7 5 0 6) "DOUTEUSE")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 0 1 0 7 4 0 5) "BABEL")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 0 0 0 0 0 6 6) "BABEL")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 6) "BABEL")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 2 2 9 12 3 1 15 5 0 1) "BABEL")
+(@invariant (or (= result "PENTECOTEE PARFAITE")
+            (or (= result "PENTECOTEE")
+            (or (= result "DOUTEUSE") (= result "BABEL")))))
+(fn pentecote_verdict ((c list)) str
+  (if (not (call cross_link_holds c)) "BABEL"
+    (if (= (call count_amens c) 12) "PENTECOTEE PARFAITE"
+      (if (= (call count_amens c) 11) "PENTECOTEE"
+        (if (>= (call count_amens c) 8) "DOUTEUSE"
+                                        "BABEL")))))
+
+(@intent "Vrai ssi la claim est Pentecotee (>= 11/12 ET cross-link OK).")
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 1) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 0 15 5 0 0) true)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 0 7 5 0 6) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 0 1 0 7 4 0 5) false)
+(@example (list 3 4 1001 5 1003 5 2 1 2 0 0 2 9 12 3 1 15 5 0 6) false)
+(@invariant (= result (and (call cross_link_holds c) (>= (call count_amens c) 11))))
+(fn is_pentecotee ((c list)) bool
+  (and (call cross_link_holds c) (>= (call count_amens c) 11)))

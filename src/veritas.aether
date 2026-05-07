@@ -1,0 +1,263 @@
+;; VERITAS v2 - Protocole d'attestation de claims scientifiques (renforce)
+;; Auteur: Wilfred Maillot
+;; Date: 2026-05-07
+;;
+;; Innovations v2 par rapport a v1 :
+;;   1. Daniel-Pentade : (M, T, P7, P11, P13) au lieu de (M, T, P)
+;;      → collision aleatoire passe de 1/343 a 1/(7·11·13) = 1/1001
+;;   2. Cross-link : sceau 7 (Sabbat) integre formula_hash dans son checksum
+;;      → impossible de swap formule/raisonnement sans casser l'attestation
+;;
+;; Structure d'une claim v2 :
+;;   (list  <expr-RPN>  M  T  P7  P11  P13   i0 i1 i2 i3 i4 i5 i6)
+;;          \---------- formule MTP-v2 -------/  \-- proposition --/
+;;          len-7 elements (>=6)                  exactement 7
+;;
+;; Pour V=35 = (3+4)·5 :
+;;   M=12 mod 7=5,  T=2 mod 7=2,  P7=35 mod 7=0,  P11=35 mod 11=2,  P13=35 mod 13=9
+;;   formula_hash = (5+2+0+2+9) mod 7 = 4
+;;   prop parfaite : (12 3 1 15 5 0 i6) ou i6 = (36+4) mod 7 = 5
+;;
+;; Deuteronome 19:15 - "Sur la parole de deux ou de trois temoins, l'affaire sera decidee."
+
+;; ===================================================================
+;; SECTION 1 : SCEAUX (atomiques)
+;; ===================================================================
+
+(@intent "Sceau 1 - Logos. i0 > 0.")
+(@invariant (= result (> (get p 0) 0)))
+(fn seal_1_logos ((p list)) bool (> (get p 0) 0))
+
+(@intent "Sceau 2 - Dualite. i1 >= 2.")
+(@invariant (= result (>= (get p 1) 2)))
+(fn seal_2_dualite ((p list)) bool (>= (get p 1) 2))
+
+(@intent "Sceau 3 - Trinite. i2 = 1.")
+(@invariant (= result (= (get p 2) 1)))
+(fn seal_3_trinite ((p list)) bool (= (get p 2) 1))
+
+(@intent "Sceau 4 - Quatre Coins. i3 = 15.")
+(@invariant (= result (= (get p 3) 15)))
+(fn seal_4_coins ((p list)) bool (= (get p 3) 15))
+
+(@intent "Sceau 5 - La Main. i4 >= 5.")
+(@invariant (= result (>= (get p 4) 5)))
+(fn seal_5_main ((p list)) bool (>= (get p 4) 5))
+
+(@intent "Sceau 6 - L'Imparfait. i5 < 6.")
+(@invariant (= result (< (get p 5) 6)))
+(fn seal_6_imparfait ((p list)) bool (< (get p 5) 6))
+
+(@intent "Sceau 7 v2 (Veritas) : checksum mod 7 + fhash (cross-link a la formule).")
+(@example (list 12 3 1 15 5 0 5) 4 true)
+(@example (list 12 3 1 15 5 0 5) 0 false)
+(@example (list 12 3 1 15 5 0 1) 0 true)
+(@invariant (= result
+  (= (get p 6)
+     (% (+ (get p 0) (get p 1) (get p 2) (get p 3) (get p 4) (get p 5) fhash) 7))))
+(fn veritas_seal_7 ((p list) (fhash num)) bool
+  (= (get p 6)
+     (% (+ (get p 0) (get p 1) (get p 2) (get p 3) (get p 4) (get p 5) fhash) 7)))
+
+
+;; ===================================================================
+;; SECTION 2 : MTP-v2 (Daniel-Pentade)
+;; ===================================================================
+
+(@intent "Renvoie l'expression RPN (les len-5 premiers tokens, 5 temoins suffixes).")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) (list 3 4 1001 5 1003))
+(fn expr_part_v2 ((f list)) list (slice f 0 (- (len f) 5)))
+
+(@intent "Temoin M (5e depuis la fin) - somme operandes mod 7.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) 5)
+(fn witness_M_v2 ((f list)) num (get f (- (len f) 5)))
+
+(@intent "Temoin T (4e depuis la fin) - nb operateurs mod 7.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) 2)
+(fn witness_T_v2 ((f list)) num (get f (- (len f) 4)))
+
+(@intent "Temoin P_7 (3e depuis la fin) - V mod 7.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) 0)
+(fn witness_P_7 ((f list)) num (get f (- (len f) 3)))
+
+(@intent "Temoin P_11 (2e depuis la fin) - V mod 11.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) 2)
+(fn witness_P_11 ((f list)) num (get f (- (len f) 2)))
+
+(@intent "Temoin P_13 (dernier) - V mod 13.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) 9)
+(fn witness_P_13 ((f list)) num (get f (- (len f) 1)))
+
+(@intent "Reducer somme operandes.")
+(fn add_if_operand ((acc num) (tok num)) num
+  (if (< tok 1001) (+ acc tok) acc))
+
+(@intent "Somme des operandes (tokens < 1001).")
+(@example (list 3 4 1001 5 1003) 12)
+(fn sum_operands ((expr list)) num
+  (reduce:list add_if_operand expr 0))
+
+(@intent "Reducer compte operateurs.")
+(fn inc_if_operator ((acc num) (tok num)) num
+  (if (>= tok 1001) (+ acc 1) acc))
+
+(@intent "Nombre d'operateurs (tokens >= 1001).")
+(@example (list 3 4 1001 5 1003) 2)
+(fn count_operators ((expr list)) num
+  (reduce:list inc_if_operator expr 0))
+
+(@intent "Phase MANE I v2.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) true)
+(@example (list 3 4 1001 5 1003 4 2 0 2 9) false)
+(@invariant (= result (= (call witness_M_v2 f) (% (call sum_operands (call expr_part_v2 f)) 7))))
+(fn mane_I_v2 ((f list)) bool
+  (= (call witness_M_v2 f) (% (call sum_operands (call expr_part_v2 f)) 7)))
+
+(@intent "Phase MANE II v2.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) true)
+(@example (list 3 4 1001 5 1003 5 1 0 2 9) false)
+(@invariant (= result (= (call witness_T_v2 f) (% (call count_operators (call expr_part_v2 f)) 7))))
+(fn mane_II_v2 ((f list)) bool
+  (= (call witness_T_v2 f) (% (call count_operators (call expr_part_v2 f)) 7)))
+
+(@intent "Division entiere securisee.")
+(fn safe_div ((a num) (b num)) num
+  (if (= b 0) -999999 (floor (/ a b))))
+
+(@intent "Modulo securise.")
+(fn safe_mod ((a num) (b num)) num
+  (if (= b 0) -999999 (% a b)))
+
+(@intent "Operateur binaire.")
+(fn apply_binary ((op num) (a num) (b num)) num
+  (if (= a -999999) -999999 (if (= b -999999) -999999
+      (if (= op 1001) (+ a b) (if (= op 1002) (- a b) (if (= op 1003) (* a b)
+      (if (= op 1004) (call safe_div a b) (if (= op 1005) (call safe_mod a b)
+      (if (= op 1006) (math:pow a b) (if (= op 1009) (min a b) (if (= op 1010) (max a b) -999999)))))))))))
+
+(@intent "Operateur unaire.")
+(fn apply_unary ((op num) (a num)) num
+  (if (= a -999999) -999999
+    (if (= op 1101) (math:sqrt a) (if (= op 1102) (math:abs a) -999999))))
+
+(@intent "Reducer une etape stack.")
+(fn tekel_step ((stack list) (tok num)) list
+  (if (< tok 1001) (concat stack (list tok))
+    (if (>= tok 1100)
+      (if (< (len stack) 1) (list -999999)
+        (concat (slice stack 0 (- (len stack) 1))
+                (list (call apply_unary tok (get stack (- (len stack) 1))))))
+      (if (< (len stack) 2) (list -999999)
+        (concat (slice stack 0 (- (len stack) 2))
+                (list (call apply_binary tok (get stack (- (len stack) 2)) (get stack (- (len stack) 1)))))))))
+
+(@intent "Evaluation RPN complete.")
+(@example (list 3 4 1001 5 1003) 35)
+(fn tekel_weigh ((expr list)) num
+  (get (reduce:list tekel_step expr (list)) 0))
+
+(@intent "Phase PHARES v2 : V valide ET V mod 7 = P7 ET V mod 11 = P11 ET V mod 13 = P13.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) true)
+(@example (list 3 4 1001 5 1003 5 2 2 2 9) false)
+(@example (list 3 4 1001 5 1003 5 2 0 3 9) false)
+(@example (list 3 4 1001 5 1003 5 2 0 2 6) false)
+(@invariant (= result
+  (and (!= (call tekel_weigh (call expr_part_v2 f)) -999999)
+    (and (= (call witness_P_7 f) (% (call tekel_weigh (call expr_part_v2 f)) 7))
+      (and (= (call witness_P_11 f) (% (call tekel_weigh (call expr_part_v2 f)) 11))
+           (= (call witness_P_13 f) (% (call tekel_weigh (call expr_part_v2 f)) 13)))))))
+(fn phares_v2 ((f list)) bool
+  (and (!= (call tekel_weigh (call expr_part_v2 f)) -999999)
+    (and (= (call witness_P_7 f) (% (call tekel_weigh (call expr_part_v2 f)) 7))
+      (and (= (call witness_P_11 f) (% (call tekel_weigh (call expr_part_v2 f)) 11))
+           (= (call witness_P_13 f) (% (call tekel_weigh (call expr_part_v2 f)) 13))))))
+
+(@intent "Phases passees pour MTP v2 (0..4).")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) 4)
+(@example (list 3 4 1001 5 1003 4 2 0 2 9) 0)
+(@example (list 3 4 1001 5 1003 5 1 0 2 9) 1)
+(@example (list 3 4 1001 5 1003 5 2 2 2 9) 3)
+(@invariant (>= result 0))
+(@invariant (<= result 4))
+(fn phases_passed_v2 ((f list)) num
+  (if (not (call mane_I_v2 f)) 0
+    (if (not (call mane_II_v2 f)) 1
+      (if (= (call tekel_weigh (call expr_part_v2 f)) -999999) 2
+        (if (not (call phares_v2 f)) 3 4)))))
+
+(@intent "is_resolved v2 : 4 phases passees.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) true)
+(@example (list 3 4 1001 5 1003 5 2 2 2 9) false)
+(fn is_resolved_v2 ((f list)) bool (= (call phases_passed_v2 f) 4))
+
+
+;; ===================================================================
+;; SECTION 3 : VERITAS v2 (composition cross-linkee)
+;; ===================================================================
+
+(@intent "Hash de la formule (engagement local) : (M+T+P7+P11+P13) mod 7.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9) 4)
+(fn formula_hash ((f list)) num
+  (% (+ (call witness_M_v2 f)
+        (call witness_T_v2 f)
+        (call witness_P_7 f)
+        (call witness_P_11 f)
+        (call witness_P_13 f))
+     7))
+
+(@intent "Extrait la formule MTP-v2 d'une claim (les len-7 premiers tokens).")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9 12 3 1 15 5 0 5) (list 3 4 1001 5 1003 5 2 0 2 9))
+(fn claim_formula ((c list)) list (slice c 0 (- (len c) 7)))
+
+(@intent "Extrait la proposition (les 7 derniers tokens).")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9 12 3 1 15 5 0 5) (list 12 3 1 15 5 0 5))
+(fn claim_proposition ((c list)) list (slice c (- (len c) 7) (len c)))
+
+(@intent "Ouvre les 7 sceaux d'une proposition Veritas, avec sceau 7 cross-linke (0..7).")
+(fn veritas_open_seals ((p list) (fhash num)) num
+  (if (not (call seal_1_logos p)) 0
+    (if (not (call seal_2_dualite p)) 1
+      (if (not (call seal_3_trinite p)) 2
+        (if (not (call seal_4_coins p)) 3
+          (if (not (call seal_5_main p)) 4
+            (if (not (call seal_6_imparfait p)) 5
+              (if (not (call veritas_seal_7 p fhash)) 6 7))))))))
+
+(@intent "Vrai si la formule de la claim est resolue (MTP v2).")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9 12 3 1 15 5 0 5) true)
+(@example (list 3 4 1001 5 1003 5 2 2 2 9 12 3 1 15 5 0 5) false)
+(@invariant (= result (call is_resolved_v2 (call claim_formula c))))
+(fn formula_attests ((c list)) bool
+  (call is_resolved_v2 (call claim_formula c)))
+
+(@intent "Vrai si le raisonnement est scelle ET cross-linke a la formule.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9 12 3 1 15 5 0 5) true)
+(@example (list 3 4 1001 5 1003 5 2 0 2 9 12 3 1 15 5 0 1) false)
+(@example (list 3 4 1001 5 1003 5 2 0 2 9  0 3 1 15 5 0 5) false)
+(fn proposition_attests ((c list)) bool
+  (= (call veritas_open_seals
+           (call claim_proposition c)
+           (call formula_hash (call claim_formula c)))
+     7))
+
+(@intent "Niveau d'attestation v2 (0..3).")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9 12 3 1 15 5 0 5) 3)
+(@example (list 3 4 1001 5 1003 5 2 0 2 9  0 3 1 15 5 0 5) 1)
+(@invariant (>= result 0))
+(@invariant (<= result 3))
+(@invariant (= result (+ (if (call formula_attests c) 1 0) (if (call proposition_attests c) 2 0))))
+(fn attestation_level ((c list)) num
+  (+ (if (call formula_attests c) 1 0)
+     (if (call proposition_attests c) 2 0)))
+
+(@intent "Verdict VERITAS v2.")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9 12 3 1 15 5 0 5) "ATTESTEE")
+(@example (list 3 4 1001 5 1003 5 2 0 2 9  0 3 1 15 5 0 5) "BRISEE AU RAISONNEMENT")
+(@invariant (or (= result "ATTESTEE")
+                (or (= result "BRISEE A LA FORMULE")
+                    (or (= result "BRISEE AU RAISONNEMENT")
+                        (= result "BRISEE AUX DEUX")))))
+(fn veritas_verdict ((c list)) str
+  (if (= (call attestation_level c) 3) "ATTESTEE"
+    (if (= (call attestation_level c) 2) "BRISEE A LA FORMULE"
+    (if (= (call attestation_level c) 1) "BRISEE AU RAISONNEMENT" "BRISEE AUX DEUX"))))

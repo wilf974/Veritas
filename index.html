@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#FAF6ED" />
+<title>VERITAS — Linter symbolique pour claims scientifiques numériques</title>
+<meta name="description" content="Prototype de recherche : un pipeline en six couches (génération, attestation, consensus, réfutation) pour vérifier mécaniquement la cohérence et la défendabilité de claims numériques." />
+<meta name="keywords" content="veritas, peer review, scientific claims, reproductibility, aether, formal verification, research prototype" />
+<meta name="author" content="Wilfred Maillot" />
+<meta name="robots" content="index, follow" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="VERITAS — Linter symbolique pour claims scientifiques" />
+<meta property="og:description" content="Six algorithmes Aether qui produisent, attestent, font converger et exposent des claims numériques aux objections majeures." />
+<meta property="og:url" content="https://wilf974.github.io/Veritas/" />
+<meta property="og:locale" content="fr_FR" />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="VERITAS — Linter symbolique pour claims scientifiques" />
+<meta name="twitter:description" content="Pipeline Aether en six couches pour vérifier la cohérence et la défendabilité de claims numériques." />
+
+<!-- Canonical -->
+<link rel="canonical" href="https://wilf974.github.io/Veritas/" />
+
+<!-- JSON-LD structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "VERITAS Stack",
+  "applicationCategory": "ResearchApplication",
+  "operatingSystem": "Any (Aether MCP)",
+  "description": "Pipeline en six couches (génération, attestation arithmétique, vérification structurelle, composition, consensus multi-apôtre, réfutation contrôlée) pour la vérification mécanique de claims scientifiques numériques.",
+  "author": { "@type": "Person", "name": "Wilfred Maillot" },
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "codeRepository": "https://github.com/wilf974/Veritas"
+}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+<style>
+:root {
+  --parchment: #FAF6ED;
+  --parchment-deep: #F0E8D5;
+  --ink: #1F1F2E;
+  --ink-soft: #4A4A5C;
+  --ink-faint: #8B8B9A;
+  --gold: #B8860B;
+  --gold-soft: #D4A82C;
+  --crimson: #7B1818;
+  --crimson-soft: #A33030;
+  --forest: #2D5A3D;
+  --forest-soft: #4A7A5A;
+  --rule: #C8B690;
+  --rule-faint: #E0D5B5;
+  --shadow: rgba(31, 31, 46, 0.08);
+  --shadow-deep: rgba(31, 31, 46, 0.18);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: 'Lora', Georgia, serif;
+  background: var(--parchment);
+  background-image:
+    radial-gradient(ellipse at top left, rgba(184, 134, 11, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, rgba(123, 24, 24, 0.03) 0%, transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.6  0 0 0 0 0.55  0 0 0 0 0.4  0 0 0 0.045 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+  color: var(--ink);
+  line-height: 1.65;
+  font-size: 17px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+::selection { background: var(--gold); color: var(--parchment); }
+
+a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 4px; transition: color .2s; }
+a:hover { color: var(--gold); }
+
+/* ============================================================ */
+/* TYPOGRAPHIE                                                   */
+/* ============================================================ */
+
+.serif-display {
+  font-family: 'Cormorant Garamond', 'EB Garamond', Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.italic { font-style: italic; }
+.mono { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 0.92em; }
+
+h1, h2, h3 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 600; letter-spacing: -0.015em; }
+
+/* ============================================================ */
+/* LAYOUT                                                        */
+/* ============================================================ */
+
+.wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+section { padding: 64px 0; position: relative; }
+section + section { border-top: 1px solid var(--rule-faint); }
+
+.eyebrow {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding: 4px 10px;
+  border: 1px solid var(--rule);
+  margin-bottom: 24px;
+}
+
+/* ============================================================ */
+/* HERO                                                          */
+/* ============================================================ */
+
+.hero {
+  min-height: 80vh;
+  padding: 100px 0 80px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.hero-decorations {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.ornament {
+  position: absolute;
+  color: var(--gold);
+  opacity: 0.3;
+}
+
+.ornament-tl { top: 80px; left: 24px; }
+.ornament-br { bottom: 80px; right: 24px; transform: rotate(180deg); }
+
+.hero h1 {
+  font-size: clamp(64px, 12vw, 168px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+  margin-bottom: 32px;
+  font-style: italic;
+  position: relative;
+}
+
+.hero h1 .small {
+  display: block;
+  font-size: clamp(20px, 3vw, 32px);
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 16px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.hero-tagline {
+  font-size: clamp(20px, 2.4vw, 28px);
+  max-width: 720px;
+  font-style: italic;
+  color: var(--ink);
+  line-height: 1.4;
+  margin-bottom: 16px;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+.hero-tagline-en {
+  font-size: clamp(15px, 1.8vw, 18px);
+  max-width: 640px;
+  color: var(--ink-soft);
+  margin-bottom: 48px;
+  font-family: 'Lora', Georgia, serif;
+}
+
+.cta-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  background: var(--ink);
+  color: var(--parchment);
+  text-decoration: none;
+  border: 1px solid var(--ink);
+  transition: all .25s;
+  cursor: pointer;
+  position: relative;
+}
+
+.btn:hover {
+  background: var(--gold);
+  color: var(--ink);
+  border-color: var(--gold);
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+}
+.btn-ghost:hover {
+  background: var(--ink);
+  color: var(--parchment);
+  border-color: var(--ink);
+  box-shadow: 4px 4px 0 var(--gold);
+}
+
+/* ============================================================ */
+/* DISCLAIMER bar                                                */
+/* ============================================================ */
+
+.disclaimer-bar {
+  background: var(--parchment-deep);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: 14px 0;
+  font-size: 14px;
+  text-align: center;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.disclaimer-bar strong { font-style: normal; color: var(--crimson); font-weight: 600; }
+
+/* ============================================================ */
+/* SECTION TITLES                                                */
+/* ============================================================ */
+
+.section-title {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 500;
+  font-style: italic;
+  margin-bottom: 16px;
+  line-height: 1;
+}
+
+.section-subtitle {
+  font-size: 18px;
+  color: var(--ink-soft);
+  max-width: 640px;
+  margin-bottom: 48px;
+  line-height: 1.55;
+}
+
+/* ============================================================ */
+/* STACK DIAGRAM                                                 */
+/* ============================================================ */
+
+.stack { position: relative; padding-left: 32px; }
+
+.stack::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--gold) 0%, var(--rule) 100%);
+}
+
+.stack-item {
+  position: relative;
+  padding: 20px 0 20px 24px;
+  border-left: none;
+}
+
+.stack-item::before {
+  content: '';
+  position: absolute;
+  left: -25px;
+  top: 28px;
+  width: 14px;
+  height: 14px;
+  background: var(--parchment);
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--parchment);
+}
+
+.stack-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.stack-title {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 26px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+.stack-question {
+  font-size: 15px;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+/* ============================================================ */
+/* DEMO INTERACTIVE                                              */
+/* ============================================================ */
+
+.demo-card {
+  background: var(--parchment-deep);
+  border: 1px solid var(--rule);
+  padding: 36px;
+  position: relative;
+  box-shadow: 0 2px 0 var(--rule), 12px 12px 0 -2px rgba(184, 134, 11, 0.15);
+}
+
+@media (max-width: 720px) {
+  .demo-card { padding: 24px 18px; box-shadow: none; border: 1px solid var(--rule); }
+}
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: stretch;
+}
+
+@media (max-width: 720px) {
+  .demo-grid { grid-template-columns: 1fr; gap: 24px; }
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.field input,
+.field select {
+  background: var(--parchment);
+  border: 1px solid var(--rule);
+  padding: 10px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  color: var(--ink);
+  width: 100%;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(184, 134, 11, 0.18);
+}
+
+.field-hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--rule);
+  margin-top: 12px;
+}
+
+.preset {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all .2s;
+  letter-spacing: 0.05em;
+}
+
+.preset:hover {
+  background: var(--ink);
+  color: var(--parchment);
+  border-color: var(--ink);
+}
+
+/* Verdict panel */
+.verdict-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--parchment);
+  border: 1px solid var(--rule);
+  padding: 28px;
+  position: relative;
+  min-height: 360px;
+  justify-content: space-between;
+}
+
+.verdict-stamp {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+
+.verdict-display {
+  text-align: center;
+  padding: 32px 16px;
+}
+
+.verdict-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.verdict-text {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0;
+  word-break: break-word;
+}
+
+.verdict-acquittee { color: var(--forest); }
+.verdict-condamnee { color: var(--crimson); }
+
+.verdict-detail {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin-top: 14px;
+  font-style: italic;
+}
+
+/* Severity bars */
+.severities {
+  margin-top: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.sev-row {
+  display: grid;
+  grid-template-columns: 130px 1fr 24px;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+}
+
+.sev-label {
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+
+.sev-bar {
+  height: 8px;
+  background: var(--parchment-deep);
+  position: relative;
+  border: 1px solid var(--rule);
+}
+
+.sev-bar-fill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  background: var(--ink);
+  transition: width .35s cubic-bezier(.5,0,.2,1);
+}
+
+.sev-row[data-severity="0"] .sev-bar-fill,
+.sev-row[data-severity="1"] .sev-bar-fill,
+.sev-row[data-severity="2"] .sev-bar-fill,
+.sev-row[data-severity="3"] .sev-bar-fill { background: var(--forest); }
+.sev-row[data-severity="4"] .sev-bar-fill,
+.sev-row[data-severity="5"] .sev-bar-fill { background: var(--gold); }
+.sev-row[data-severity="6"] .sev-bar-fill,
+.sev-row[data-severity="7"] .sev-bar-fill { background: var(--crimson); }
+
+.sev-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  text-align: right;
+  color: var(--ink);
+}
+
+/* ============================================================ */
+/* CASE STUDY                                                    */
+/* ============================================================ */
+
+.case-list {
+  list-style: none;
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.case-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rule-faint);
+  align-items: center;
+}
+
+.case-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-weight: 700;
+}
+
+.case-text {
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.case-verdict {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 4px 9px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.v-acq { background: var(--forest); color: var(--parchment); }
+.v-con { background: var(--crimson); color: var(--parchment); }
+
+@media (max-width: 600px) {
+  .case-row { grid-template-columns: 24px 1fr; gap: 12px; }
+  .case-verdict { grid-column: 2 / 3; justify-self: start; margin-top: 6px; }
+}
+
+/* ============================================================ */
+/* CHAMPION 8 verdicts grid                                      */
+/* ============================================================ */
+
+.champion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.champion {
+  background: var(--parchment-deep);
+  border: 1px solid var(--rule);
+  padding: 18px;
+  position: relative;
+}
+
+.champion-input {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+.champion-verdict {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 18px;
+  font-weight: 600;
+  font-style: italic;
+  line-height: 1.15;
+}
+
+.champion-verdict.acq { color: var(--forest); }
+.champion-verdict.con { color: var(--crimson); }
+
+/* ============================================================ */
+/* DISCLAIMER FULL                                               */
+/* ============================================================ */
+
+.disclaimer-full {
+  background: var(--parchment-deep);
+  border: 1px solid var(--rule);
+  padding: 36px;
+  margin: 0;
+}
+
+.disclaimer-full h2 { color: var(--crimson); margin-bottom: 16px; font-size: 32px; font-style: italic; }
+.disclaimer-full p { color: var(--ink); margin-bottom: 12px; }
+.disclaimer-full ul { padding-left: 22px; margin-top: 12px; }
+.disclaimer-full li { margin-bottom: 6px; }
+
+/* ============================================================ */
+/* FOOTER                                                        */
+/* ============================================================ */
+
+footer {
+  border-top: 1px solid var(--rule);
+  padding: 48px 0 36px;
+  background: var(--parchment-deep);
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 32px;
+  margin-bottom: 36px;
+}
+
+@media (max-width: 720px) {
+  .footer-grid { grid-template-columns: 1fr; gap: 28px; }
+}
+
+.footer-col h4 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 14px;
+  font-weight: 500;
+}
+
+.footer-col ul { list-style: none; display: grid; gap: 8px; }
+.footer-col a { font-size: 14px; }
+
+.footer-bottom {
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-style: italic;
+  text-align: center;
+  border-top: 1px solid var(--rule-faint);
+  padding-top: 24px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+/* ============================================================ */
+/* ANIMATIONS                                                    */
+/* ============================================================ */
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.reveal { animation: fadeUp .8s cubic-bezier(.5,0,.2,1) backwards; }
+.delay-1 { animation-delay: .1s; }
+.delay-2 { animation-delay: .2s; }
+.delay-3 { animation-delay: .35s; }
+.delay-4 { animation-delay: .5s; }
+
+@keyframes stamp {
+  0% { transform: scale(1.8) rotate(-5deg); opacity: 0; }
+  60% { transform: scale(1.05) rotate(0deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.stamp-anim { animation: stamp .55s cubic-bezier(.4,0,.2,1); }
+
+@keyframes barSlide {
+  from { width: 0%; }
+}
+.sev-bar-fill { animation: barSlide .5s ease-out; }
+
+/* ============================================================ */
+/* RULES & ORNAMENTS                                             */
+/* ============================================================ */
+
+.rule-fancy {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 32px 0;
+  color: var(--gold);
+}
+.rule-fancy::before, .rule-fancy::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+.rule-fancy span { font-family: 'Cormorant Garamond', serif; font-size: 20px; }
+
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-decorations" aria-hidden="true">
+    <svg class="ornament ornament-tl" width="120" height="120" viewBox="0 0 120 120">
+      <g fill="none" stroke="currentColor" stroke-width="1">
+        <circle cx="60" cy="60" r="58" />
+        <circle cx="60" cy="60" r="48" />
+        <path d="M60 12 L60 108 M12 60 L108 60" />
+        <path d="M28 28 L92 92 M92 28 L28 92" stroke-dasharray="2 4" />
+      </g>
+    </svg>
+    <svg class="ornament ornament-br" width="120" height="120" viewBox="0 0 120 120">
+      <g fill="none" stroke="currentColor" stroke-width="1">
+        <circle cx="60" cy="60" r="58" />
+        <circle cx="60" cy="60" r="48" />
+        <path d="M60 12 L60 108 M12 60 L108 60" />
+        <path d="M28 28 L92 92 M92 28 L28 92" stroke-dasharray="2 4" />
+      </g>
+    </svg>
+  </div>
+
+  <div class="wrap">
+    <div class="reveal">
+      <span class="eyebrow">Research prototype · Aether MCP</span>
+    </div>
+    <h1 class="reveal delay-1">
+      <span class="small">VERITAS</span>
+      Le linter<br>
+      <span class="italic">scientifique</span>
+    </h1>
+    <p class="hero-tagline reveal delay-2">
+      Six couches qui produisent, attestent, font converger et exposent à la critique des claims numériques.
+    </p>
+    <p class="hero-tagline-en reveal delay-2">
+      A symbolic linter for numerical scientific claims. It does not prove a claim is true — it checks whether it is internally coherent, properly attested, and defensible against a fixed set of objections.
+    </p>
+    <div class="cta-row reveal delay-3">
+      <a class="btn" href="#tribunal-demo">Lancer la démo →</a>
+      <a class="btn btn-ghost" href="https://github.com/wilf974/Veritas" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</header>
+
+<!-- DISCLAIMER bar -->
+<div class="disclaimer-bar">
+  <div class="wrap">
+    <strong>Prototype de recherche</strong> — pas un arbitre de vérité scientifique. Outil pédagogique.
+  </div>
+</div>
+
+<!-- STACK -->
+<section id="stack" aria-labelledby="stack-title">
+  <div class="wrap">
+    <span class="eyebrow">Pipeline</span>
+    <h2 id="stack-title" class="section-title">Six couches, six questions</h2>
+    <p class="section-subtitle">
+      Chaque couche ajoute une question. Une claim ne « passe » pas le stack en répondant oui ; elle passe en survivant à toutes les questions.
+    </p>
+
+    <ol class="stack">
+      <li class="stack-item">
+        <div class="stack-num">1 · GENESIS 41</div>
+        <div class="stack-title">Joseph (le Songe)</div>
+        <div class="stack-question">Peut-on produire une claim bien formée ?</div>
+      </li>
+      <li class="stack-item">
+        <div class="stack-num">2 · DANIEL 5</div>
+        <div class="stack-title">Mané Thékel Pharès</div>
+        <div class="stack-question">Le calcul est-il auto-attesté (V mod 7 ≡ P) ?</div>
+      </li>
+      <li class="stack-item">
+        <div class="stack-num">3 · APOCALYPSE 6</div>
+        <div class="stack-title">Sept Sceaux du Raisonnement</div>
+        <div class="stack-question">Le raisonnement est-il structuré en 7 dimensions ?</div>
+      </li>
+      <li class="stack-item">
+        <div class="stack-num">4 · COMPOSITION</div>
+        <div class="stack-title">VERITAS (cross-link)</div>
+        <div class="stack-question">Formule et raisonnement sont-ils scellés ensemble ?</div>
+      </li>
+      <li class="stack-item">
+        <div class="stack-num">5 · ACTES 2</div>
+        <div class="stack-title">La Pentecôte (12 apôtres)</div>
+        <div class="stack-question">12 angles indépendants convergent-ils ?</div>
+      </li>
+      <li class="stack-item">
+        <div class="stack-num">6 · DANIEL 7</div>
+        <div class="stack-title">Le Tribunal (7 objections)</div>
+        <div class="stack-question">La claim survit-elle aux objections principales ?</div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- DEMO -->
+<section id="tribunal-demo" aria-labelledby="demo-title">
+  <div class="wrap">
+    <span class="eyebrow">Démo interactive</span>
+    <h2 id="demo-title" class="section-title">Soumets une claim au Tribunal</h2>
+    <p class="section-subtitle">
+      Encode une claim numérique via les 8 métadonnées. Le Tribunal applique mécaniquement les 7 objections et rend son verdict.
+    </p>
+
+    <div class="demo-card">
+      <div class="demo-grid">
+        <div class="field-group" id="form">
+          <div class="field">
+            <label for="f-n">Échantillon · n <span class="field-hint">(taille)</span></label>
+            <input type="number" id="f-n" min="0" value="100" />
+          </div>
+          <div class="field">
+            <label for="f-p">p-value × 10⁴ <span class="field-hint">(500 = 0.05)</span></label>
+            <input type="number" id="f-p" min="0" max="10000" value="500" />
+          </div>
+          <div class="field">
+            <label for="f-alt">Hypothèses alternatives concurrentes</label>
+            <input type="number" id="f-alt" min="0" value="1" />
+          </div>
+          <div class="field">
+            <label for="f-rep">Reproductibilité <span class="field-hint">(0..7)</span></label>
+            <input type="number" id="f-rep" min="0" max="7" value="3" />
+          </div>
+          <div class="field">
+            <label for="f-data">Origine des données</label>
+            <select id="f-data">
+              <option value="1">1 — Collectées (vérifiables)</option>
+              <option value="2">2 — Simulées</option>
+              <option value="3">3 — Suspect / fabriquées</option>
+              <option value="0">0 — Inconnu</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-causal">Type de lien causal</label>
+            <select id="f-causal">
+              <option value="3">3 — Causal prouvé (RCT, MR…)</option>
+              <option value="2">2 — Expérimental</option>
+              <option value="1" selected>1 — Corrélation</option>
+              <option value="0">0 — Inconnu</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-pent">Verdict Pentecôte amont</label>
+            <select id="f-pent">
+              <option value="3" selected>3 — PENTECÔTÉE PARFAITE</option>
+              <option value="2">2 — PENTECÔTÉE (11/12)</option>
+              <option value="1">1 — DOUTEUSE</option>
+              <option value="0">0 — BABEL</option>
+            </select>
+          </div>
+
+          <div class="preset-row" aria-label="Cas-tests rapides">
+            <button class="preset" data-preset="medical">Médical n=100</button>
+            <button class="preset" data-preset="rct">Grand RCT</button>
+            <button class="preset" data-preset="wakefield">Wakefield n=12</button>
+            <button class="preset" data-preset="phacking">p-hacking</button>
+            <button class="preset" data-preset="universal">« tous adoptent »</button>
+            <button class="preset" data-preset="fabricated">Données fabriquées</button>
+            <button class="preset" data-preset="mendel">Mendelian RCT</button>
+            <button class="preset" data-preset="solid">Étude solide</button>
+          </div>
+        </div>
+
+        <div class="verdict-panel" id="verdict-panel" aria-live="polite">
+          <span class="verdict-stamp">VERDICT N° <span id="vstamp">001</span></span>
+
+          <div class="verdict-display">
+            <div class="verdict-eyebrow">Sentence rendue</div>
+            <h3 id="verdict-text" class="verdict-text verdict-acquittee">…</h3>
+            <p class="verdict-detail" id="verdict-detail">…</p>
+          </div>
+
+          <div class="severities" id="severities" aria-label="Sévérités par objection">
+            <!-- generated by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rule-fancy" aria-hidden="true"><span>❦</span></div>
+  </div>
+</section>
+
+<!-- CASE STUDY -->
+<section id="case-study" aria-labelledby="case-title">
+  <div class="wrap">
+    <span class="eyebrow">Cas d'étude · 10 claims</span>
+    <h2 id="case-title" class="section-title">Un papier réaliste passé au pipeline</h2>
+    <p class="section-subtitle">
+      RCT mindfulness sur stress professionnel, n=2000. Deux claims passent — huit méritent reformulation. <a href="https://github.com/wilf974/Veritas/blob/main/examples/case_study.md" target="_blank" rel="noopener">Rapport complet</a>.
+    </p>
+
+    <ol class="case-list">
+      <li class="case-row"><span class="case-num">1</span><span class="case-text">Réduction PSS de 30 % à 12 sem (primary, p&lt;0.001)</span><span class="case-verdict v-acq">Acquittée</span></li>
+      <li class="case-row"><span class="case-num">2</span><span class="case-text">Réduction burnout de 25 % à 12 sem (secondary)</span><span class="case-verdict v-acq">Acquittée</span></li>
+      <li class="case-row"><span class="case-num">3</span><span class="case-text">Effet plus fort chez les femmes (sous-groupe n=1000)</span><span class="case-verdict v-con">Reproductibilité</span></li>
+      <li class="case-row"><span class="case-num">4</span><span class="case-text">Effet en ≥45 ans (sous-groupe n=400)</span><span class="case-verdict v-con">Généralisation</span></li>
+      <li class="case-row"><span class="case-num">5</span><span class="case-text">Engagement : 70 % terminent le programme (descriptif)</span><span class="case-verdict v-con">Causalité</span></li>
+      <li class="case-row"><span class="case-num">6</span><span class="case-text">Effet à 6 mois (sous-échantillon, suivi unique)</span><span class="case-verdict v-con">Reproductibilité</span></li>
+      <li class="case-row"><span class="case-num">7</span><span class="case-text">Corrélation temps de méditation / réduction stress</span><span class="case-verdict v-con">Causalité</span></li>
+      <li class="case-row"><span class="case-num">8</span><span class="case-text">Coût-efficacité 200 €/employé pour bénéfice mesuré</span><span class="case-verdict v-con">Alternative</span></li>
+      <li class="case-row"><span class="case-num">9</span><span class="case-text">« Pas d'événement indésirable sérieux rapporté »</span><span class="case-verdict v-con">Méthode</span></li>
+      <li class="case-row"><span class="case-num">10</span><span class="case-text">Conclusion : « tous les employeurs devraient adopter »</span><span class="case-verdict v-con">Alternative</span></li>
+    </ol>
+  </div>
+</section>
+
+<!-- CHAMPIONS -->
+<section id="champions" aria-labelledby="champ-title">
+  <div class="wrap">
+    <span class="eyebrow">Verdicts canoniques</span>
+    <h2 id="champ-title" class="section-title">Les 8 issues possibles</h2>
+    <p class="section-subtitle">
+      Une claim sort soit acquittée, soit condamnée par l'une des 7 objections. Chaque issue a son input minimal.
+    </p>
+
+    <div class="champion-grid" id="champ-grid">
+      <!-- generated by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- DISCLAIMER FULL -->
+<section id="disclaimer" aria-labelledby="disclaimer-title">
+  <div class="wrap">
+    <div class="disclaimer-full">
+      <h2 id="disclaimer-title">Avertissement</h2>
+      <p>
+        VERITAS Stack est un <strong>prototype de recherche</strong>. Il <strong>ne lit pas</strong> les papiers tout seul. Un humain (ou un extracteur futur) encode les métadonnées numériques ; le stack applique ensuite une grille de décision stable, transparente, reproductible.
+      </p>
+      <p>
+        En particulier, ce prototype <strong>n'est pas</strong> :
+      </p>
+      <ul>
+        <li>un outil de validation médicale ou juridique</li>
+        <li>un remplacement de la peer review humaine</li>
+        <li>un détecteur de fraude scientifique</li>
+        <li>un arbitre de la vérité d'une claim</li>
+      </ul>
+      <p>
+        Il <strong>est</strong> :
+      </p>
+      <ul>
+        <li>un linter symbolique pour claims numériques</li>
+        <li>un protocole de contrôle de cohérence et de défendabilité</li>
+        <li>une grille d'objections systématiques mécanisable</li>
+      </ul>
+      <p>
+        L'extraction des métadonnées reste subjective. Le Tribunal automatise <em>la conséquence</em>, pas <em>la classification initiale</em>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>Veritas</h4>
+        <p style="font-size: 14px; color: var(--ink-soft); font-style: italic;">
+          The stack does not prove that a claim is true.<br>
+          It forces it to be calculable, attested, understood by multiple witnesses, and exposed to the major objections.
+        </p>
+      </div>
+      <div class="footer-col">
+        <h4>Repos</h4>
+        <ul>
+          <li><a href="https://github.com/wilf974/Veritas" target="_blank" rel="noopener">Veritas Stack</a></li>
+          <li><a href="https://github.com/wilf974/OpenSource" target="_blank" rel="noopener">OpenSource Portfolio</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Documents</h4>
+        <ul>
+          <li><a href="https://github.com/wilf974/Veritas/blob/main/examples/case_study.md" target="_blank" rel="noopener">Cas d'étude</a></li>
+          <li><a href="https://github.com/wilf974/Veritas/blob/main/tests/benchmark.md" target="_blank" rel="noopener">Benchmark (170 tests)</a></li>
+          <li><a href="https://github.com/wilf974/Veritas/blob/main/docs/DESIGN.md" target="_blank" rel="noopener">Design</a></li>
+          <li><a href="https://github.com/wilf974/Veritas/blob/main/DISCLAIMER.md" target="_blank" rel="noopener">Disclaimer</a></li>
+        </ul>
+      </div>
+    </div>
+    <p class="footer-bottom">
+      Apache-2.0 · © 2026 Wilfred Maillot · Aucun tracking · Aucun backend · Conçu avec rigueur
+    </p>
+  </div>
+</footer>
+
+<script>
+'use strict';
+
+/* =============================================================
+   Tribunal logic — mirror of tribunal.aether
+   ============================================================= */
+
+const objections = {
+  calcul: (m) => m.pent === 3 ? 0 : m.pent === 2 ? 1 : m.pent === 1 ? 4 : 7,
+  donnees: (m) => m.data === 1 ? 0 : m.data === 2 ? 4 : m.data === 3 ? 7 : 5,
+  causalite: (m) => m.causal === 3 ? 1 : m.causal === 2 ? 3 : m.causal === 1 ? 5 : 7,
+  generalisation: (m) => m.n < 50 ? 7 : m.n < 150 ? 6 : m.n < 500 ? 5 : m.n < 1500 ? 3 : 0,
+  methode: (m) => m.p <= 10 ? 0 : m.p <= 100 ? 2 : m.p <= 500 ? 5 : 7,
+  alternative: (m) => m.alt === 0 ? 0 : m.alt === 1 ? 2 : m.alt === 2 ? 4 : m.alt === 3 ? 6 : 7,
+  reproductibilite: (m) => Math.max(0, 7 - m.rep),
+};
+
+const orderedKeys = ['calcul','donnees','causalite','generalisation','methode','alternative','reproductibilite'];
+const labels = {
+  calcul: 'Calcul',
+  donnees: 'Données',
+  causalite: 'Causalité',
+  generalisation: 'Généralisation',
+  methode: 'Méthode',
+  alternative: 'Alternative',
+  reproductibilite: 'Reproductibilité',
+};
+const labelsUpper = {
+  calcul: 'CALCUL', donnees: 'DONNÉES', causalite: 'CAUSALITÉ',
+  generalisation: 'GÉNÉRALISATION', methode: 'MÉTHODE',
+  alternative: 'ALTERNATIVE', reproductibilite: 'REPRODUCTIBILITÉ',
+};
+
+const explanations = {
+  calcul: 'La formule ne survit pas à la vérification Pentecôte amont.',
+  donnees: 'L\'origine des données pose question (simulées ou suspectes).',
+  causalite: 'Le lien causal n\'est pas établi — corrélation seulement.',
+  generalisation: 'L\'échantillon est trop petit pour conclure largement.',
+  methode: 'La p-value n\'atteint pas le seuil de signification utile.',
+  alternative: 'Plusieurs hypothèses concurrentes restent plausibles.',
+  reproductibilite: 'La claim n\'est pas répliquée indépendamment.',
+};
+
+function judge(m) {
+  const sevs = {};
+  for (const k of orderedKeys) sevs[k] = objections[k](m);
+  const max = Math.max(...Object.values(sevs));
+  if (max < 4) return { verdict: 'ACQUITTÉE', winner: null, sevs, max };
+  for (const k of orderedKeys) {
+    if (sevs[k] === max) return { verdict: 'CONDAMNÉE PAR ' + labelsUpper[k], winner: k, sevs, max };
+  }
+  return { verdict: 'ACQUITTÉE', winner: null, sevs, max };
+}
+
+/* =============================================================
+   Form binding
+   ============================================================= */
+
+const $ = (id) => document.getElementById(id);
+const form = {
+  n: $('f-n'), p: $('f-p'), alt: $('f-alt'), rep: $('f-rep'),
+  data: $('f-data'), causal: $('f-causal'), pent: $('f-pent'),
+};
+
+function readForm() {
+  return {
+    n: parseInt(form.n.value || 0, 10),
+    p: parseInt(form.p.value || 0, 10),
+    alt: parseInt(form.alt.value || 0, 10),
+    rep: Math.max(0, Math.min(7, parseInt(form.rep.value || 0, 10))),
+    data: parseInt(form.data.value, 10),
+    causal: parseInt(form.causal.value, 10),
+    pent: parseInt(form.pent.value, 10),
+  };
+}
+
+let verdictCount = 1;
+
+function renderSeverities(sevs) {
+  const c = $('severities');
+  c.innerHTML = '';
+  for (const k of orderedKeys) {
+    const sev = sevs[k];
+    const row = document.createElement('div');
+    row.className = 'sev-row';
+    row.dataset.severity = sev;
+    row.innerHTML = `
+      <span class="sev-label">${labels[k]}</span>
+      <div class="sev-bar"><div class="sev-bar-fill" style="width:${(sev/7)*100}%"></div></div>
+      <span class="sev-num">${sev}</span>
+    `;
+    c.appendChild(row);
+  }
+}
+
+function renderVerdict() {
+  const m = readForm();
+  const { verdict, winner, sevs, max } = judge(m);
+  const t = $('verdict-text');
+  const d = $('verdict-detail');
+  const stamp = $('vstamp');
+
+  t.textContent = verdict;
+  t.className = 'verdict-text ' + (winner === null ? 'verdict-acquittee' : 'verdict-condamnee');
+  t.classList.remove('stamp-anim');
+  void t.offsetWidth;
+  t.classList.add('stamp-anim');
+
+  if (winner === null) {
+    d.textContent = `Sévérité maximale ${max}/7 — sous le seuil de condamnation. La claim tient.`;
+  } else {
+    d.textContent = explanations[winner];
+  }
+
+  stamp.textContent = String(verdictCount).padStart(3, '0');
+  verdictCount++;
+
+  renderSeverities(sevs);
+}
+
+/* =============================================================
+   Presets
+   ============================================================= */
+
+const presets = {
+  medical:    { n: 100,    p: 500,  alt: 1, rep: 3, data: 1, causal: 1, pent: 3 },
+  rct:        { n: 5000,   p: 5,    alt: 0, rep: 6, data: 1, causal: 3, pent: 3 },
+  wakefield:  { n: 12,     p: 100,  alt: 1, rep: 0, data: 1, causal: 1, pent: 3 },
+  phacking:   { n: 100,    p: 490,  alt: 0, rep: 4, data: 1, causal: 1, pent: 3 },
+  universal:  { n: 2000,   p: 10,   alt: 2, rep: 4, data: 1, causal: 2, pent: 3 },
+  fabricated: { n: 5000,   p: 5,    alt: 0, rep: 6, data: 3, causal: 3, pent: 3 },
+  mendel:     { n: 100000, p: 5,    alt: 0, rep: 7, data: 1, causal: 3, pent: 3 },
+  solid:      { n: 10000,  p: 10,   alt: 0, rep: 7, data: 1, causal: 3, pent: 3 },
+};
+
+document.querySelectorAll('.preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = presets[btn.dataset.preset];
+    form.n.value = p.n;
+    form.p.value = p.p;
+    form.alt.value = p.alt;
+    form.rep.value = p.rep;
+    form.data.value = p.data;
+    form.causal.value = p.causal;
+    form.pent.value = p.pent;
+    renderVerdict();
+    document.getElementById('verdict-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+});
+
+['n','p','alt','rep','data','causal','pent'].forEach(k => {
+  form[k].addEventListener('input', renderVerdict);
+  form[k].addEventListener('change', renderVerdict);
+});
+
+/* =============================================================
+   8 champion verdicts grid
+   ============================================================= */
+
+const champs = [
+  { input: '(100000 5 50 0 7 1 3 3)',   verdict: 'ACQUITTÉE',                       cls: 'acq', label: 'Étude impeccable' },
+  { input: '(100 500 20 1 3 1 1 3)',    verdict: 'CONDAMNÉE PAR GÉNÉRALISATION',    cls: 'con', label: 'n=100 trop petit' },
+  { input: '(100000 5 50 0 7 1 3 0)',   verdict: 'CONDAMNÉE PAR CALCUL',            cls: 'con', label: 'Pentecôte BABEL' },
+  { input: '(100000 5 50 0 7 3 3 3)',   verdict: 'CONDAMNÉE PAR DONNÉES',           cls: 'con', label: 'Données fabriquées' },
+  { input: '(100000 5 50 0 7 1 0 3)',   verdict: 'CONDAMNÉE PAR CAUSALITÉ',         cls: 'con', label: 'Lien causal inconnu' },
+  { input: '(100000 8000 50 0 7 1 3 3)',verdict: 'CONDAMNÉE PAR MÉTHODE',           cls: 'con', label: 'p-value trop haute' },
+  { input: '(100000 5 50 4 7 1 3 3)',   verdict: 'CONDAMNÉE PAR ALTERNATIVE',       cls: 'con', label: '4 hypothèses concurrentes' },
+  { input: '(100000 5 50 0 0 1 3 3)',   verdict: 'CONDAMNÉE PAR REPRODUCTIBILITÉ',  cls: 'con', label: 'Jamais répliquée' },
+];
+
+const grid = document.getElementById('champ-grid');
+champs.forEach(c => {
+  const el = document.createElement('article');
+  el.className = 'champion';
+  el.innerHTML = `
+    <div class="champion-input">${c.input}</div>
+    <h3 class="champion-verdict ${c.cls}">${c.verdict}</h3>
+    <p style="font-size:12px;color:var(--ink-faint);margin-top:8px;font-style:italic;">${c.label}</p>
+  `;
+  grid.appendChild(el);
+});
+
+/* =============================================================
+   Initial render
+   ============================================================= */
+
+renderVerdict();
+
+</script>
+</body>
+</html>

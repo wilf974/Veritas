@@ -1,0 +1,141 @@
+;; Les Sept Sceaux du Raisonnement
+;; Spec: docs/2026-05-07-sept-sceaux-design.md
+;; Date: 2026-05-07
+;; Auteur: Wilfred Maillot
+;;
+;; Une proposition de raisonnement = (list i0 i1 i2 i3 i4 i5 i6)
+;;   i0 = longueur d'intention (>0 attendu)
+;;   i1 = nb de sous-parties (>=2 attendu)
+;;   i2 = accord trinitaire (1 attendu)
+;;   i3 = bitmask 4 coins (15 attendu)
+;;   i4 = sondes passees sur 5 (>=5 attendu)
+;;   i5 = score d'imperfection (<6 attendu)
+;;   i6 = checksum mod 7 (= (sum i0..i5) mod 7)
+
+(@intent "Sceau 1 - Logos. Verifie qu'une intention est declaree (i0 > 0).")
+(@example (list 12 3 1 15 5 0 1) true)
+(@example (list 0 3 1 15 5 0 1) false)
+(@example (list 1 2 1 15 5 0 3) true)
+(@example (list 100 3 1 15 5 0 5) true)
+(@example (list 0 0 0 0 0 0 0) false)
+(@invariant (= result (> (get p 0) 0)))
+(fn seal_1_logos ((p list)) bool
+  (> (get p 0) 0))
+
+(@intent "Sceau 2 - Dualite. Verifie une decomposition en >=2 sous-parties (i1 >= 2).")
+(@example (list 12 3 1 15 5 0 1) true)
+(@example (list 12 1 1 15 5 0 6) false)
+(@example (list 12 2 1 15 5 0 0) true)
+(@example (list 12 0 1 15 5 0 5) false)
+(@example (list 12 99 1 15 5 0 4) true)
+(@invariant (= result (>= (get p 1) 2)))
+(fn seal_2_dualite ((p list)) bool
+  (>= (get p 1) 2))
+
+(@intent "Sceau 3 - Trinite. Verifie l'accord trinitaire (i2 = 1).")
+(@example (list 12 3 1 15 5 0 1) true)
+(@example (list 12 3 0 15 5 0 0) false)
+(@example (list 12 3 2 15 5 0 2) false)
+(@example (list 12 3 1 15 5 0 1) true)
+(@invariant (= result (= (get p 2) 1)))
+(fn seal_3_trinite ((p list)) bool
+  (= (get p 2) 1))
+
+(@intent "Sceau 4 - Quatre Coins de la Terre. Verifie que les 4 cas limites sont couverts (i3 = 15).")
+(@example (list 12 3 1 15 5 0 1) true)
+(@example (list 12 3 1 7 5 0 0) false)
+(@example (list 12 3 1 14 5 0 6) false)
+(@example (list 12 3 1 0 5 0 6) false)
+(@example (list 12 3 1 16 5 0 1) false)
+(@invariant (= result (= (get p 3) 15)))
+(fn seal_4_coins ((p list)) bool
+  (= (get p 3) 15))
+
+(@intent "Sceau 5 - La Main. Verifie que les 5 sondes sont passees (i4 >= 5).")
+(@example (list 12 3 1 15 5 0 1) true)
+(@example (list 12 3 1 15 4 0 0) false)
+(@example (list 12 3 1 15 0 0 3) false)
+(@example (list 12 3 1 15 6 0 2) true)
+(@example (list 12 3 1 15 5 5 5) true)
+(@invariant (= result (>= (get p 4) 5)))
+(fn seal_5_main ((p list)) bool
+  (>= (get p 4) 5))
+
+(@intent "Sceau 6 - L'Imparfait. Rejette des que le score d'imperfection atteint 6 (i5 < 6).")
+(@example (list 12 3 1 15 5 0 1) true)
+(@example (list 12 3 1 15 5 6 0) false)
+(@example (list 12 3 1 15 5 5 0) true)
+(@example (list 12 3 1 15 5 7 1) false)
+(@example (list 12 3 1 15 5 100 0) false)
+(@invariant (= result (< (get p 5) 6)))
+(fn seal_6_imparfait ((p list)) bool
+  (< (get p 5) 6))
+
+(@intent "Sceau 7 - Sabbat. Verifie l'integrite finale via checksum mod 7 (i6 = (sum i0..i5) mod 7).")
+(@example (list 12 3 1 15 5 0 1) true)
+(@example (list 12 3 1 15 5 0 0) false)
+(@example (list 1 2 1 15 5 0 3) true)
+(@example (list 7 7 1 15 5 0 0) true)
+(@example (list 0 0 0 0 0 0 0) true)
+(@example (list 0 0 0 0 0 0 1) false)
+(@invariant (= result
+  (= (get p 6)
+     (% (+ (get p 0) (get p 1) (get p 2) (get p 3) (get p 4) (get p 5))
+        7))))
+(fn seal_7_sabbat ((p list)) bool
+  (= (get p 6)
+     (% (+ (get p 0) (get p 1) (get p 2) (get p 3) (get p 4) (get p 5))
+        7)))
+
+(@intent "Ouvre les sceaux en sequence et compte ceux qui s'ouvrent (0..7).")
+(@example (list 12 3 1 15 5 0 1) 7)
+(@example (list 0 3 1 15 5 0 1) 0)
+(@example (list 12 1 1 15 5 0 6) 1)
+(@example (list 12 3 0 15 5 0 0) 2)
+(@example (list 12 3 1 7 5 0 0) 3)
+(@example (list 12 3 1 15 4 0 0) 4)
+(@example (list 12 3 1 15 5 6 0) 5)
+(@example (list 12 3 1 15 5 0 0) 6)
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(@invariant (if (call seal_1_logos p) (>= result 1) (= result 0)))
+(@invariant (if (>= result 2) (call seal_1_logos p) true))
+(@invariant (if (>= result 3) (call seal_2_dualite p) true))
+(@invariant (if (>= result 4) (call seal_3_trinite p) true))
+(@invariant (if (>= result 5) (call seal_4_coins p) true))
+(@invariant (if (>= result 6) (call seal_5_main p) true))
+(@invariant (if (= result 7) (call seal_7_sabbat p) true))
+(fn open_seals ((p list)) num
+  (if (not (call seal_1_logos p)) 0
+    (if (not (call seal_2_dualite p)) 1
+      (if (not (call seal_3_trinite p)) 2
+        (if (not (call seal_4_coins p)) 3
+          (if (not (call seal_5_main p)) 4
+            (if (not (call seal_6_imparfait p)) 5
+              (if (not (call seal_7_sabbat p)) 6
+                7))))))))
+
+(@intent "Predicat global: la proposition est-elle scellee (7 sceaux ouverts) ?")
+(@example (list 12 3 1 15 5 0 1) true)
+(@example (list 0 3 1 15 5 0 1) false)
+(@example (list 12 3 1 15 5 0 0) false)
+(@invariant (= result (= (call open_seals p) 7)))
+(fn is_sealed ((p list)) bool
+  (= (call open_seals p) 7))
+
+(@intent "Verdict textuel: 'SCELLEE' ou 'ROMPUE AU SCEAU N' ou N est le premier sceau brise.")
+(@example (list 12 3 1 15 5 0 1) "SCELLEE")
+(@example (list 0 3 1 15 5 0 1) "ROMPUE AU SCEAU 1")
+(@example (list 12 1 1 15 5 0 6) "ROMPUE AU SCEAU 2")
+(@example (list 12 3 0 15 5 0 0) "ROMPUE AU SCEAU 3")
+(@example (list 12 3 1 7 5 0 0) "ROMPUE AU SCEAU 4")
+(@example (list 12 3 1 15 4 0 0) "ROMPUE AU SCEAU 5")
+(@example (list 12 3 1 15 5 6 0) "ROMPUE AU SCEAU 6")
+(@example (list 12 3 1 15 5 0 0) "ROMPUE AU SCEAU 7")
+(@invariant (or (= result "SCELLEE") (str:starts result "ROMPUE AU SCEAU ")))
+(@invariant (if (call is_sealed p) (= result "SCELLEE") (str:starts result "ROMPUE AU SCEAU ")))
+(@invariant (if (= result "SCELLEE") (call is_sealed p) true))
+(fn verdict ((p list)) str
+  (if (call is_sealed p)
+    "SCELLEE"
+    (concat "ROMPUE AU SCEAU " (str:char (+ 49 (call open_seals p))))))

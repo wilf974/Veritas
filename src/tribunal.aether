@@ -1,0 +1,297 @@
+;; LE TRIBUNAL - Algorithme de refutation controlee
+;; Auteur: Wilfred Maillot
+;; Date: 2026-05-07
+;;
+;; Daniel 7:9-10 - "Je regardai pendant que l'on placait des trones... le juge
+;;                  s'assit, et les livres furent ouverts."
+;;
+;; LE TRIBUNAL prend une claim PENTECOTEE (verifiee par les 12 apotres) et
+;; soumet a 7 OBJECTIONS systematiques. Si toutes les objections sont legeres
+;; (severite < 4), la claim est ACQUITTEE. Sinon elle est CONDAMNEE par la
+;; plus grave objection.
+;;
+;; Composition avec le stack :
+;;   Joseph    -> genere une claim
+;;   Pentecote -> 12 apotres verifient
+;;   Tribunal  -> 7 accusations  ← cette couche
+;;
+;; Format d'entree :
+;;   tribunal_input = (list n p_x10000 es_x100 n_alt rep data causal pent_status)
+;;     n               : taille de l'echantillon
+;;     p_x10000        : p-value × 10000 (fixed point) - ex: 500 = 0.05
+;;     es_x100         : effect size × 100 - ex: 20 = 0.20
+;;     n_alt           : nombre d'hypotheses concurrentes plausibles (0..N)
+;;     rep             : reproductibility score (0..7, 7 = parfait)
+;;     data            : origine donnees (1=collecte, 2=simule, 3=fabrique)
+;;     causal          : type lien (1=correlation, 2=experimental, 3=causal prouve)
+;;     pent_status     : verdict Pentecote (0=BABEL, 1=DOUTEUSE, 2=PENTECOTEE, 3=PARFAITE)
+;;
+;; Severite : 0 (objection nulle) .. 7 (objection grave)
+;; Seuil de condamnation : severite >= 4
+
+
+;; ===================================================================
+;; SECTION 1 : Accesseurs des 8 metadata
+;; ===================================================================
+
+(@intent "Taille de l'echantillon (n).")
+(@example (list 100 500 20 1 3 1 1 3) 100)
+(@example (list 10000 10 50 0 7 1 3 3) 10000)
+(fn meta_n ((t list)) num (get t 0))
+
+(@intent "p-value × 10000 (fixed point).")
+(@example (list 100 500 20 1 3 1 1 3) 500)
+(@example (list 10000 10 50 0 7 1 3 3) 10)
+(fn meta_p ((t list)) num (get t 1))
+
+(@intent "Effect size × 100.")
+(@example (list 100 500 20 1 3 1 1 3) 20)
+(fn meta_es ((t list)) num (get t 2))
+
+(@intent "Nombre d'hypotheses concurrentes.")
+(@example (list 100 500 20 1 3 1 1 3) 1)
+(@example (list 100 500 20 4 3 1 1 3) 4)
+(fn meta_alt ((t list)) num (get t 3))
+
+(@intent "Reproductibility score (0..7).")
+(@example (list 100 500 20 1 3 1 1 3) 3)
+(@example (list 10000 10 50 0 7 1 3 3) 7)
+(fn meta_rep ((t list)) num (get t 4))
+
+(@intent "Origine des donnees (1=collecte, 2=simule, 3=fabrique).")
+(@example (list 100 500 20 1 3 1 1 3) 1)
+(@example (list 100 500 20 1 3 3 1 3) 3)
+(fn meta_data ((t list)) num (get t 5))
+
+(@intent "Type de lien causal (1=correlation, 2=experimental, 3=causal prouve).")
+(@example (list 100 500 20 1 3 1 1 3) 1)
+(@example (list 10000 10 50 0 7 1 3 3) 3)
+(fn meta_causal ((t list)) num (get t 6))
+
+(@intent "Verdict Pentecote (0=BABEL, 1=DOUTEUSE, 2=PENTECOTEE, 3=PARFAITE).")
+(@example (list 100 500 20 1 3 1 1 3) 3)
+(@example (list 100 500 20 1 3 1 1 0) 0)
+(fn meta_pentecote_status ((t list)) num (get t 7))
+
+
+;; ===================================================================
+;; SECTION 2 : Les 7 objections
+;; ===================================================================
+
+(@intent "Objection 1 - CALCUL : la formule resiste-t-elle a Pentecote ? Severite 0/1/4/7.")
+(@example (list 100 500 20 1 3 1 1 3) 0)    ;; PARFAITE -> 0
+(@example (list 100 500 20 1 3 1 1 2) 1)    ;; PENTECOTEE -> 1
+(@example (list 100 500 20 1 3 1 1 1) 4)    ;; DOUTEUSE -> 4
+(@example (list 100 500 20 1 3 1 1 0) 7)    ;; BABEL -> 7
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(fn objection_calcul ((t list)) num
+  (if (= (call meta_pentecote_status t) 3) 0
+    (if (= (call meta_pentecote_status t) 2) 1
+      (if (= (call meta_pentecote_status t) 1) 4 7))))
+
+(@intent "Objection 2 - DONNEES : provenance des donnees fiable ? Severite 0/4/7.")
+(@example (list 100 500 20 1 3 1 1 3) 0)    ;; collecte -> 0
+(@example (list 100 500 20 1 3 2 1 3) 4)    ;; simule -> 4
+(@example (list 100 500 20 1 3 3 1 3) 7)    ;; fabrique -> 7
+(@example (list 100 500 20 1 3 0 1 3) 5)    ;; inconnu -> 5
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(fn objection_donnees ((t list)) num
+  (if (= (call meta_data t) 1) 0
+    (if (= (call meta_data t) 2) 4
+      (if (= (call meta_data t) 3) 7 5))))
+
+(@intent "Objection 3 - CAUSALITE : lien causal etabli ou simple correlation ? Severite 1/3/5/7.")
+(@example (list 100 500 20 1 3 1 3 3) 1)    ;; causal prouve -> 1
+(@example (list 100 500 20 1 3 1 2 3) 3)    ;; experimental -> 3
+(@example (list 100 500 20 1 3 1 1 3) 5)    ;; correlation -> 5
+(@example (list 100 500 20 1 3 1 0 3) 7)    ;; inconnu -> 7
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(fn objection_causalite ((t list)) num
+  (if (= (call meta_causal t) 3) 1
+    (if (= (call meta_causal t) 2) 3
+      (if (= (call meta_causal t) 1) 5 7))))
+
+(@intent "Objection 4 - GENERALISATION : echantillon assez large pour generaliser ? Severite par seuils sur n.")
+(@example (list 30 500 20 1 3 1 1 3) 7)         ;; n<50 -> 7
+(@example (list 100 500 20 1 3 1 1 3) 6)        ;; 50<=n<150 -> 6
+(@example (list 200 500 20 1 3 1 1 3) 5)        ;; 150<=n<500 -> 5
+(@example (list 800 500 20 1 3 1 1 3) 3)        ;; 500<=n<1500 -> 3
+(@example (list 10000 500 20 1 3 1 1 3) 0)      ;; n>=1500 -> 0
+(@example (list 49 500 20 1 3 1 1 3) 7)
+(@example (list 50 500 20 1 3 1 1 3) 6)
+(@example (list 149 500 20 1 3 1 1 3) 6)
+(@example (list 150 500 20 1 3 1 1 3) 5)
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(fn objection_generalisation ((t list)) num
+  (if (< (call meta_n t) 50) 7
+    (if (< (call meta_n t) 150) 6
+      (if (< (call meta_n t) 500) 5
+        (if (< (call meta_n t) 1500) 3 0)))))
+
+(@intent "Objection 5 - METHODE : p-value sous le seuil ? Severite par seuils.")
+(@example (list 100 5 20 1 3 1 1 3) 0)          ;; p<=0.0005 -> 0 (tres significatif)
+(@example (list 100 10 20 1 3 1 1 3) 0)         ;; p=0.001 -> 0
+(@example (list 100 50 20 1 3 1 1 3) 2)         ;; p=0.005 -> 2
+(@example (list 100 99 20 1 3 1 1 3) 2)         ;; p=0.0099 -> 2
+(@example (list 100 100 20 1 3 1 1 3) 2)        ;; p=0.01 -> 2 (boundary)
+(@example (list 100 200 20 1 3 1 1 3) 5)        ;; p=0.02 -> 5
+(@example (list 100 500 20 1 3 1 1 3) 5)        ;; p=0.05 -> 5 (borderline)
+(@example (list 100 800 20 1 3 1 1 3) 7)        ;; p=0.08 -> 7 (non significatif)
+(@example (list 100 6000 20 1 3 1 1 3) 7)       ;; p=0.6 -> 7
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(fn objection_methode ((t list)) num
+  (if (<= (call meta_p t) 10) 0
+    (if (<= (call meta_p t) 100) 2
+      (if (<= (call meta_p t) 500) 5 7))))
+
+(@intent "Objection 6 - ALTERNATIVE : combien d'hypotheses concurrentes ? Severite par paliers.")
+(@example (list 100 500 20 0 3 1 1 3) 0)        ;; 0 alt -> 0
+(@example (list 100 500 20 1 3 1 1 3) 2)        ;; 1 alt -> 2
+(@example (list 100 500 20 2 3 1 1 3) 4)        ;; 2 alt -> 4
+(@example (list 100 500 20 3 3 1 1 3) 6)        ;; 3 alt -> 6
+(@example (list 100 500 20 4 3 1 1 3) 7)        ;; 4+ alt -> 7
+(@example (list 100 500 20 10 3 1 1 3) 7)       ;; 10 alt -> 7 (cap)
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(fn objection_alternative ((t list)) num
+  (if (= (call meta_alt t) 0) 0
+    (if (= (call meta_alt t) 1) 2
+      (if (= (call meta_alt t) 2) 4
+        (if (= (call meta_alt t) 3) 6 7)))))
+
+(@intent "Objection 7 - REPRODUCTIBILITE : score de reproductibilite (severite = 7 - rep).")
+(@example (list 100 500 20 1 7 1 1 3) 0)        ;; rep=7 -> 0
+(@example (list 100 500 20 1 4 1 1 3) 3)        ;; rep=4 -> 3
+(@example (list 100 500 20 1 3 1 1 3) 4)        ;; rep=3 -> 4
+(@example (list 100 500 20 1 0 1 1 3) 7)        ;; rep=0 -> 7
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(fn objection_reproductibilite ((t list)) num
+  (- 7 (call meta_rep t)))
+
+
+;; ===================================================================
+;; SECTION 3 : Severite max et objection dominante
+;; ===================================================================
+
+(@intent "Severite maximale parmi les 7 objections.")
+(@example (list 10000 10 50 0 7 1 3 3) 1)        ;; tout parfait sauf causalite=1
+(@example (list 100 500 20 1 3 1 1 3) 6)         ;; max = generalisation 6
+(@example (list 100 500 20 1 3 1 1 0) 7)         ;; calcul=7 (BABEL)
+(@example (list 100 500 20 4 3 1 1 3) 7)         ;; alternative=7 (4+ alt)
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(fn max_severity ((t list)) num
+  (max (call objection_calcul t)
+    (max (call objection_donnees t)
+      (max (call objection_causalite t)
+        (max (call objection_generalisation t)
+          (max (call objection_methode t)
+            (max (call objection_alternative t)
+                 (call objection_reproductibilite t))))))))
+
+(@intent "Index de l'objection dominante (1..7) ou 0 si toutes legeres.")
+(@example (list 10000 10 50 0 7 1 3 3) 0)        ;; ACQUITTEE (max=1<4)
+(@example (list 100 500 20 1 3 1 1 3) 4)         ;; generalisation
+(@example (list 100 500 20 1 3 1 1 0) 1)         ;; calcul
+(@example (list 100 500 20 1 3 3 1 3) 2)         ;; donnees
+(@example (list 100 500 20 1 3 1 0 3) 3)         ;; causalite
+(@example (list 100 6000 20 0 7 1 3 3) 5)        ;; methode
+(@example (list 1500 50 50 4 7 1 3 3) 6)         ;; alternative
+(@example (list 10000 10 50 0 0 1 3 3) 7)        ;; reproductibilite
+(@invariant (>= result 0))
+(@invariant (<= result 7))
+(fn worst_objection_index ((t list)) num
+  (if (< (call max_severity t) 4) 0
+    (if (= (call objection_calcul t) (call max_severity t)) 1
+      (if (= (call objection_donnees t) (call max_severity t)) 2
+        (if (= (call objection_causalite t) (call max_severity t)) 3
+          (if (= (call objection_generalisation t) (call max_severity t)) 4
+            (if (= (call objection_methode t) (call max_severity t)) 5
+              (if (= (call objection_alternative t) (call max_severity t)) 6 7))))))))
+
+
+;; ===================================================================
+;; SECTION 4 : Verdict du Tribunal
+;; ===================================================================
+
+(@intent "Verdict du Tribunal : ACQUITTEE ou CONDAMNEE PAR <objection>.")
+(@example (list 10000 10 50 0 7 1 3 3) "ACQUITTEE")                          ;; tout bon
+(@example (list 100 500 20 1 3 1 1 3) "CONDAMNEE PAR GENERALISATION")        ;; medical n=100
+(@example (list 100 500 20 1 3 1 1 0) "CONDAMNEE PAR CALCUL")                ;; BABEL
+(@example (list 100 500 20 1 3 3 1 3) "CONDAMNEE PAR DONNEES")               ;; donnees fabriquees
+(@example (list 100 500 20 1 3 1 0 3) "CONDAMNEE PAR CAUSALITE")             ;; causalite inconnue
+(@example (list 100 6000 20 0 7 1 3 3) "CONDAMNEE PAR METHODE")              ;; p>0.05
+(@example (list 1500 50 50 4 7 1 3 3) "CONDAMNEE PAR ALTERNATIVE")           ;; 4+ hypotheses
+(@example (list 10000 10 50 0 0 1 3 3) "CONDAMNEE PAR REPRODUCTIBILITE")     ;; rep=0
+(@invariant (or (= result "ACQUITTEE")
+            (or (= result "CONDAMNEE PAR CALCUL")
+            (or (= result "CONDAMNEE PAR DONNEES")
+            (or (= result "CONDAMNEE PAR CAUSALITE")
+            (or (= result "CONDAMNEE PAR GENERALISATION")
+            (or (= result "CONDAMNEE PAR METHODE")
+            (or (= result "CONDAMNEE PAR ALTERNATIVE")
+                (= result "CONDAMNEE PAR REPRODUCTIBILITE")))))))))
+(fn tribunal_verdict ((t list)) str
+  (if (= (call worst_objection_index t) 0) "ACQUITTEE"
+    (if (= (call worst_objection_index t) 1) "CONDAMNEE PAR CALCUL"
+      (if (= (call worst_objection_index t) 2) "CONDAMNEE PAR DONNEES"
+        (if (= (call worst_objection_index t) 3) "CONDAMNEE PAR CAUSALITE"
+          (if (= (call worst_objection_index t) 4) "CONDAMNEE PAR GENERALISATION"
+            (if (= (call worst_objection_index t) 5) "CONDAMNEE PAR METHODE"
+              (if (= (call worst_objection_index t) 6) "CONDAMNEE PAR ALTERNATIVE"
+                                                       "CONDAMNEE PAR REPRODUCTIBILITE"))))))))
+
+(@intent "Predicat : la claim survit-elle au tribunal (severite max < 4) ?")
+(@example (list 10000 10 50 0 7 1 3 3) true)
+(@example (list 100 500 20 1 3 1 1 3) false)
+(@example (list 100 500 20 1 3 1 1 0) false)
+(@example (list 5000 50 30 1 6 1 3 3) true)
+(@example (list 1500 50 30 0 7 1 3 3) true)
+(@example (list 30 50 30 0 7 1 3 3) false)
+(@invariant (= result (= (call worst_objection_index t) 0)))
+(fn survives_tribunal ((t list)) bool
+  (= (call worst_objection_index t) 0))
+
+
+;; ===================================================================
+;; SECTION 5 : Cas reels d'application (medecine, IA, science)
+;; ===================================================================
+
+(@intent "Cas-tests reels : verdict pour des claims scientifiques typiques.")
+;; Wakefield-style n=12 (etude retractee 2010) : echantillon ridiculement petit
+(@example (list 12 100 50 1 0 1 1 3) "CONDAMNEE PAR GENERALISATION")
+;; p-hacking : p=0.049 borderline avec n=100 trop petit
+(@example (list 100 490 20 0 7 1 3 3) "CONDAMNEE PAR GENERALISATION")
+;; Replication crisis : grosse etude N=2000 bien faite mais non reproduite (rep=0)
+(@example (list 2000 50 30 0 0 1 2 3) "CONDAMNEE PAR REPRODUCTIBILITE")
+;; Mendelian randomization : tres grand N, causalite genetique prouvee
+(@example (list 100000 5 30 0 7 1 3 3) "ACQUITTEE")
+;; RCT phase III ideal : grand N, double aveugle, p tres petit
+(@example (list 5000 5 50 0 6 1 3 3) "ACQUITTEE")
+;; Single-arm phase II : n=30 sans groupe controle = trop petit
+(@example (list 30 100 60 2 5 1 1 3) "CONDAMNEE PAR GENERALISATION")
+;; Etude observationnelle large mais correlation seulement
+(@example (list 50000 10 20 1 6 1 1 3) "CONDAMNEE PAR CAUSALITE")
+;; Etude business/marketing : N suffisant mais 3 alts plausibles
+(@example (list 500 200 30 3 4 1 1 3) "CONDAMNEE PAR ALTERNATIVE")
+;; REPRODUCTIBILITE pure : grand N, p OK, causal OK, mais rep=0
+(@example (list 1500 50 50 0 0 1 3 3) "CONDAMNEE PAR REPRODUCTIBILITE")
+;; CALCUL : Pentecote BABEL = rejet immediat
+(@example (list 5000 5 50 0 6 1 3 0) "CONDAMNEE PAR CALCUL")
+;; DONNEES : echantillon fabrique
+(@example (list 5000 5 50 0 6 3 3 3) "CONDAMNEE PAR DONNEES")
+;; Etude limite (n=149) : juste sous le seuil 150
+(@example (list 149 50 30 0 7 1 3 3) "CONDAMNEE PAR GENERALISATION")
+;; Etude limite (n=150) : juste au seuil 150
+(@example (list 150 50 30 0 7 1 3 3) "CONDAMNEE PAR GENERALISATION")
+;; Etude limite (n=500) : juste au seuil 500
+(@example (list 500 50 30 0 7 1 3 3) "ACQUITTEE")
+;; Etude limite (n=1500) : juste au seuil 1500 (acquittee sur tout)
+(@example (list 1500 50 30 0 7 1 3 3) "ACQUITTEE")
+(fn real_world_verdict ((t list)) str (call tribunal_verdict t))
